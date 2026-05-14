@@ -34,6 +34,11 @@ def main():
         return
 
     sidebar_user_info()
+    
+    # Show warning for guest mode
+    if st.session_state.auth.get("is_guest"):
+        st.warning("👤 You are in Guest Mode - your data will not be saved!", icon="⚠️")
+    
     if st.session_state.auth.get("role") == "admin":
         admin_panel()
 

@@ -225,6 +225,8 @@ def login_ui():
     with center:
         st.subheader("Welcome to your workspace")
         st.caption("Sign in to continue with your todo board.")
+        
+        # Regular login/register
         auth_mode = st.radio("Choose action", ["Login", "Register"], horizontal=True)
 
         with st.form("auth_form"):
@@ -244,6 +246,7 @@ def login_ui():
                     push_toast("Register successful. Your account is ready.", "success")
                 else:
                     push_toast(f"Login successful: {email}", "success")
+                st.session_state.auth["is_guest"] = False
                 refresh_user_profile()
                 rerun_app()
             else:
@@ -265,13 +268,35 @@ def login_ui():
                 )
             )
             st.link_button("Continue with Google", auth_url, use_container_width=True)
-        with st.expander("How to sign in as admin"):
-            st.write(
-                "1. Login with any account.\n"
-                "2. Use an existing admin account to open Admin Controls.\n"
-                "3. Promote your account role from user to admin.\n"
-                "4. Logout and login again to refresh admin privileges."
-            )
+        
+        # Admin login
+        st.markdown("---")
+        st.subheader("Admin Access")
+        admin_pass = st.text_input("Admin Password", type="password", key="admin_pass")
+        col1, col2 = st.columns(2)
+        if col1.button("Login as Admin", use_container_width=True):
+            if admin_pass == "admin":
+                st.session_state.auth["id_token"] = "admin_session"
+                st.session_state.auth["email"] = "Administrator"
+                st.session_state.auth["uid"] = "admin_user"
+                st.session_state.auth["role"] = "admin"
+                st.session_state.auth["is_guest"] = False
+                push_toast("Admin login successful.", "success")
+                rerun_app()
+            else:
+                st.error("Incorrect admin password.")
+        
+        # Guest login
+        if col2.button("Login as Guest", use_container_width=True):
+            st.session_state.auth["id_token"] = "guest_session"
+            st.session_state.auth["email"] = "Guest"
+            st.session_state.auth["uid"] = "guest_user"
+            st.session_state.auth["role"] = "user"
+            st.session_state.auth["is_guest"] = True
+            push_toast("Logged in as Guest - data won't be saved.", "warning")
+            rerun_app()
+        
+        st.warning("⚠️ Guest mode: Your todos will not be saved!")
 
 
 def logout():
@@ -282,11 +307,12 @@ def logout():
 
 def sidebar_user_info():
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Current user")
-    st.sidebar.write(f"**Email:** {st.session_state.auth.get('email')} ")
-    st.sidebar.write(f"**Role:** {st.session_state.auth.get('role')} ")
-    st.sidebar.write(f"**UID:** {st.session_state.auth.get('uid')} ")
-    if st.session_state.auth.get("role") == "admin":
+    email = st.session_state.auth.get('email', 'User')
+    role = st.session_state.auth.get('role', 'user')
+    st.sidebar.markdown(f"### 👋 Welcome, {email}")
+    st.sidebar.write("Ready to organize your tasks and boost your productivity!")
+    st.sidebar.write(f"**Role:** {role}")
+    if role == "admin":
         st.sidebar.success("Admin mode enabled")
     if st.sidebar.button("Logout"):
         logout()
@@ -294,12 +320,15 @@ def sidebar_user_info():
 
 def todo_form():
     st.sidebar.header("Create a Todo")
-    title = st.sidebar.text_input("Title", key="todo_title")
-    description = st.sidebar.text_area("Description", key="todo_description")
-    due_date = st.sidebar.date_input("Due date", key="todo_due_date")
-    priority = st.sidebar.selectbox("Priority", ["low", "normal", "high"], key="todo_priority")
+    
+    is_guest = st.session_state.auth.get("is_guest", False)
+    
+    title = st.sidebar.text_input("Title", key="todo_title", disabled=is_guest)
+    description = st.sidebar.text_area("Description", key="todo_description", disabled=is_guest)
+    due_date = st.sidebar.date_input("Due date", key="todo_due_date", disabled=is_guest)
+    priority = st.sidebar.selectbox("Priority", ["low", "normal", "high"], key="todo_priority", disabled=is_guest)
 
-    if st.sidebar.button("Add Todo"):
+    if st.sidebar.button("Add Todo", type="primary", use_container_width=True, disabled=is_guest):
         if not title.strip():
             st.error("Todo title is required.")
             return
@@ -310,19 +339,29 @@ def todo_form():
             "priority": priority,
         }
         response = backend_post("/todos", payload)
-        if response.status_code == 201:
+        if response and response.status_code == 201:
             st.success("Todo created")
             rerun_app()
-        else:
+        elif response:
             show_response_error(response)
+    
+    if is_guest:
+        st.sidebar.info("Guest mode: todos are not saved", icon="ℹ️")
 
 
 def todo_list_view():
     st.header("Todo Dashboard")
+    
+    is_guest = st.session_state.auth.get("is_guest", False)
+    
     filter_col1, filter_col2, filter_col3 = st.columns(3)
-    search_text = filter_col1.text_input("Search todos")
-    status_filter = filter_col2.selectbox("Status", ["all", "todo", "done"])
-    priority_filter = filter_col3.selectbox("Priority", ["all", "low", "normal", "high"])
+    search_text = filter_col1.text_input("Search todos", disabled=is_guest)
+    status_filter = filter_col2.selectbox("Status", ["all", "todo", "done"], disabled=is_guest)
+    priority_filter = filter_col3.selectbox("Priority", ["all", "low", "normal", "high"], disabled=is_guest)
+
+    if is_guest:
+        st.info("No todos available in guest mode", icon="ℹ️")
+        return
 
     params = {}
     if search_text:
@@ -333,8 +372,9 @@ def todo_list_view():
         params["priority"] = priority_filter
 
     response = backend_get("/todos", params=params)
-    if response.status_code != 200:
-        show_response_error(response)
+    if not response or response.status_code != 200:
+        if response:
+            show_response_error(response)
         return
 
     todos = response.json()
@@ -423,6 +463,9 @@ def render_todo_card(todo: dict):
                 if col2.form_submit_button("Cancel", use_container_width=True):
                     st.session_state[edit_key] = False
                     rerun_app()
+    
+    # Add spacing between todo cards
+    st.divider()
 
 
 def save_todo_changes(todo_id: str, title: str, description: str, due_date: str, priority: str):
