@@ -322,7 +322,7 @@ def todo_list_view():
     filter_col1, filter_col2, filter_col3 = st.columns(3)
     search_text = filter_col1.text_input("Search todos")
     status_filter = filter_col2.selectbox("Status", ["all", "todo", "done"])
-    priority_filter = filter_col3.selectbox("Priority", ["all", "normal", "high", "low"])
+    priority_filter = filter_col3.selectbox("Priority", ["all", "low", "normal", "high"])
 
     params = {}
     if search_text:
@@ -352,30 +352,26 @@ def render_todo_card(todo: dict):
         cols[0].markdown(f"### {todo['title']}")
         cols[1].markdown(f"**{'Done' if todo['done'] else 'Open'}**")
         cols[2].markdown(f"**Priority:** {todo['priority']}  \n**Due:** {todo.get('due_date') or '-'}")
-        st.write(todo.get("description") or "")
+        
+        # Make description stand out with styling
+        description_text = todo.get("description") or "No description"
+        st.markdown(
+            f"""
+            <div style='background: rgba(255,255,255,0.5); padding: 12px; border-radius: 6px; 
+                        border-left: 4px solid var(--accent); margin: 12px 0;'>
+                <b>📝 Description:</b><br>{description_text}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        with st.expander("Edit todo"):
-            edit_title = st.text_input("Title", value=todo["title"], key=f"title_{todo['id']}")
-            edit_description = st.text_area(
-                "Description",
-                value=todo.get("description") or "",
-                key=f"description_{todo['id']}",
-            )
-            edit_due_date = st.text_input(
-                "Due date (YYYY-MM-DD)",
-                value=todo.get("due_date") or "",
-                key=f"due_{todo['id']}",
-            )
-            edit_priority = st.selectbox(
-                "Priority",
-                ["normal", "high", "low"],
-                index=["normal", "high", "low"].index(todo.get("priority", "normal")),
-                key=f"priority_{todo['id']}",
-            )
-            if st.button("Save changes", key=f"save_{todo['id']}"):
-                save_todo_changes(todo["id"], edit_title, edit_description, edit_due_date, edit_priority)
+        # Initialize edit mode in session state
+        edit_key = f"editing_{todo['id']}"
+        if edit_key not in st.session_state:
+            st.session_state[edit_key] = False
 
-        action_cols = st.columns([1.4, 1, 3.6])
+        # Action buttons row - now with Edit button
+        action_cols = st.columns([1.2, 1.2, 1.2, 1.4])
         toggle_text = "Complete Task" if not todo["done"] else "Reopen Task"
         toggle_type = "primary" if not todo["done"] else "secondary"
         if action_cols[0].button(toggle_text, key=f"toggle_{todo['id']}", type=toggle_type, use_container_width=True):
@@ -386,13 +382,47 @@ def render_todo_card(todo: dict):
             else:
                 show_response_error(update)
 
-        if action_cols[1].button("Delete", key=f"delete_{todo['id']}", type="secondary", use_container_width=True):
+        if action_cols[1].button("Edit", key=f"edit_{todo['id']}", type="secondary", use_container_width=True):
+            st.session_state[edit_key] = not st.session_state[edit_key]
+            rerun_app()
+
+        if action_cols[2].button("Delete", key=f"delete_{todo['id']}", type="secondary", use_container_width=True):
             delete = backend_delete(f"/todos/{todo['id']}")
             if delete.status_code == 204:
                 push_toast("Task deleted.", "warning")
                 rerun_app()
             else:
                 show_response_error(delete)
+
+        # Show edit form if in edit mode
+        if st.session_state.get(edit_key, False):
+            st.markdown("---")
+            with st.form(f"edit_form_{todo['id']}"):
+                edit_title = st.text_input("Title", value=todo["title"], key=f"title_{todo['id']}")
+                edit_description = st.text_area(
+                    "Description",
+                    value=todo.get("description") or "",
+                    key=f"description_{todo['id']}",
+                )
+                edit_due_date = st.text_input(
+                    "Due date (YYYY-MM-DD)",
+                    value=todo.get("due_date") or "",
+                    key=f"due_{todo['id']}",
+                )
+                edit_priority = st.selectbox(
+                    "Priority",
+                    ["low", "normal", "high"],
+                    index=["low", "normal", "high"].index(todo.get("priority", "normal")),
+                    key=f"priority_{todo['id']}",
+                )
+                col1, col2 = st.columns(2)
+                if col1.form_submit_button("Save changes", use_container_width=True):
+                    save_todo_changes(todo["id"], edit_title, edit_description, edit_due_date, edit_priority)
+                    st.session_state[edit_key] = False
+                    rerun_app()
+                if col2.form_submit_button("Cancel", use_container_width=True):
+                    st.session_state[edit_key] = False
+                    rerun_app()
 
 
 def save_todo_changes(todo_id: str, title: str, description: str, due_date: str, priority: str):
