@@ -1,5 +1,5 @@
 import urllib.parse
-
+import uuid
 import streamlit as st
 
 from api_client import backend_delete, backend_get, backend_post, backend_put, get_user_list, update_user_role
@@ -219,7 +219,6 @@ def handle_google_redirect():
 
 
 def login_ui():
-    st.markdown("<style>section[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
 
     _, center, _ = st.columns([1, 1.2, 1])
     with center:
@@ -296,7 +295,12 @@ def login_ui():
             push_toast("Logged in as Guest - data won't be saved.", "warning")
             rerun_app()
         
-        st.warning("⚠️ Guest mode: Your todos will not be saved!")
+        st.markdown("""
+        <div style='background-color: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; border: 1px solid #ffeeba; margin-top: 15px;'>
+            ⚠️ <b>Note for Guest mode:</b> You can test the app, but your todos will be lost when you refresh or close the page!
+        </div>
+        """,
+        unsafe_allow_html=True)
 
 
 def logout():
@@ -322,13 +326,13 @@ def todo_form():
     st.sidebar.header("Create a Todo")
     
     is_guest = st.session_state.auth.get("is_guest", False)
-    
-    title = st.sidebar.text_input("Title", key="todo_title", disabled=is_guest)
-    description = st.sidebar.text_area("Description", key="todo_description", disabled=is_guest)
-    due_date = st.sidebar.date_input("Due date", key="todo_due_date", disabled=is_guest)
-    priority = st.sidebar.selectbox("Priority", ["low", "normal", "high"], key="todo_priority", disabled=is_guest)
 
-    if st.sidebar.button("Add Todo", type="primary", use_container_width=True, disabled=is_guest):
+    title = st.sidebar.text_input("Title", key="todo_title")
+    description = st.sidebar.text_area("Description", key="todo_description")
+    due_date = st.sidebar.date_input("Due date", key="todo_due_date")
+    priority = st.sidebar.selectbox("Priority", ["low", "normal", "high"], key="todo_priority")
+
+    if st.sidebar.button("Add Todo", type="primary", use_container_width=True):
         if not title.strip():
             st.error("Todo title is required.")
             return
@@ -338,12 +342,25 @@ def todo_form():
             "due_date": due_date.isoformat() if due_date else None,
             "priority": priority,
         }
-        response = backend_post("/todos", payload)
-        if response and response.status_code == 201:
-            st.success("Todo created")
+
+        if is_guest:
+            if "guest_todos" not in st.session_state:
+                st.session_state.guest_todos = []
+            
+            guest_todo = payload.copy()
+            guest_todo["id"] = str(uuid.uuid4())
+            guest_todo["done"] = False
+            st.session_state.guest_todos.append(guest_todo)
+            
+            st.success("Todo created (Temporary)")
             rerun_app()
-        elif response:
-            show_response_error(response)
+        else:
+            response = backend_post("/todos", payload)
+            if response and response.status_code == 201:
+                st.success("Todo created")
+                rerun_app()
+            elif response:
+                show_response_error(response)
     
     if is_guest:
         st.sidebar.info("Guest mode: todos are not saved", icon="ℹ️")
@@ -355,29 +372,37 @@ def todo_list_view():
     is_guest = st.session_state.auth.get("is_guest", False)
     
     filter_col1, filter_col2, filter_col3 = st.columns(3)
-    search_text = filter_col1.text_input("Search todos", disabled=is_guest)
-    status_filter = filter_col2.selectbox("Status", ["all", "todo", "done"], disabled=is_guest)
-    priority_filter = filter_col3.selectbox("Priority", ["all", "low", "normal", "high"], disabled=is_guest)
+    search_text = filter_col1.text_input("Search todos")
+    status_filter = filter_col2.selectbox("Status", ["all", "todo", "done"])
+    priority_filter = filter_col3.selectbox("Priority", ["all", "low", "normal", "high"])
 
+    todos = []
+    
     if is_guest:
-        st.info("No todos available in guest mode", icon="ℹ️")
-        return
+        all_guest_todos = st.session_state.get("guest_todos", [])
+        for t in all_guest_todos:
+            match_search = not search_text or search_text.lower() in t["title"].lower()
+            match_status = status_filter == "all" or (status_filter == "done" and t["done"]) or (status_filter == "todo" and not t["done"])
+            match_priority = priority_filter == "all" or t["priority"] == priority_filter
+            
+            if match_search and match_status and match_priority:
+                todos.append(t)
+    else:
+        params = {}
+        if search_text:
+            params["q"] = search_text
+        if status_filter != "all":
+            params["status"] = status_filter
+        if priority_filter != "all":
+            params["priority"] = priority_filter
 
-    params = {}
-    if search_text:
-        params["q"] = search_text
-    if status_filter != "all":
-        params["status"] = status_filter
-    if priority_filter != "all":
-        params["priority"] = priority_filter
+        response = backend_get("/todos", params=params)
+        if not response or response.status_code != 200:
+            if response:
+                show_response_error(response)
+            return
+        todos = response.json()
 
-    response = backend_get("/todos", params=params)
-    if not response or response.status_code != 200:
-        if response:
-            show_response_error(response)
-        return
-
-    todos = response.json()
     if not todos:
         st.info("No todos found.")
         return
@@ -387,13 +412,14 @@ def todo_list_view():
 
 
 def render_todo_card(todo: dict):
+    is_guest = st.session_state.auth.get("is_guest", False) # Kiểm tra role
+    
     with st.container():
         cols = st.columns([3, 1, 1])
         cols[0].markdown(f"### {todo['title']}")
         cols[1].markdown(f"**{'Done' if todo['done'] else 'Open'}**")
         cols[2].markdown(f"**Priority:** {todo['priority']}  \n**Due:** {todo.get('due_date') or '-'}")
         
-        # Make description stand out with styling
         description_text = todo.get("description") or "No description"
         st.markdown(
             f"""
@@ -405,66 +431,74 @@ def render_todo_card(todo: dict):
             unsafe_allow_html=True,
         )
 
-        # Initialize edit mode in session state
         edit_key = f"editing_{todo['id']}"
         if edit_key not in st.session_state:
             st.session_state[edit_key] = False
 
-        # Action buttons row - now with Edit button
         action_cols = st.columns([1.2, 1.2, 1.2, 1.4])
         toggle_text = "Complete Task" if not todo["done"] else "Reopen Task"
         toggle_type = "primary" if not todo["done"] else "secondary"
+        
         if action_cols[0].button(toggle_text, key=f"toggle_{todo['id']}", type=toggle_type, use_container_width=True):
-            update = backend_put(f"/todos/{todo['id']}", {"done": not todo["done"]})
-            if update.status_code == 200:
+            if is_guest:
+                for t in st.session_state.guest_todos:
+                    if t["id"] == todo["id"]:
+                        t["done"] = not t["done"]
                 push_toast("Task status updated.", "success")
                 rerun_app()
             else:
-                show_response_error(update)
+                update = backend_put(f"/todos/{todo['id']}", {"done": not todo["done"]})
+                if update.status_code == 200:
+                    push_toast("Task status updated.", "success")
+                    rerun_app()
+                else:
+                    show_response_error(update)
 
         if action_cols[1].button("Edit", key=f"edit_{todo['id']}", type="secondary", use_container_width=True):
             st.session_state[edit_key] = not st.session_state[edit_key]
             rerun_app()
 
         if action_cols[2].button("Delete", key=f"delete_{todo['id']}", type="secondary", use_container_width=True):
-            delete = backend_delete(f"/todos/{todo['id']}")
-            if delete.status_code == 204:
+            if is_guest:
+                st.session_state.guest_todos = [t for t in st.session_state.guest_todos if t["id"] != todo["id"]]
                 push_toast("Task deleted.", "warning")
                 rerun_app()
             else:
-                show_response_error(delete)
+                delete = backend_delete(f"/todos/{todo['id']}")
+                if delete.status_code == 204:
+                    push_toast("Task deleted.", "warning")
+                    rerun_app()
+                else:
+                    show_response_error(delete)
 
-        # Show edit form if in edit mode
         if st.session_state.get(edit_key, False):
             st.markdown("---")
             with st.form(f"edit_form_{todo['id']}"):
                 edit_title = st.text_input("Title", value=todo["title"], key=f"title_{todo['id']}")
-                edit_description = st.text_area(
-                    "Description",
-                    value=todo.get("description") or "",
-                    key=f"description_{todo['id']}",
-                )
-                edit_due_date = st.text_input(
-                    "Due date (YYYY-MM-DD)",
-                    value=todo.get("due_date") or "",
-                    key=f"due_{todo['id']}",
-                )
-                edit_priority = st.selectbox(
-                    "Priority",
-                    ["low", "normal", "high"],
-                    index=["low", "normal", "high"].index(todo.get("priority", "normal")),
-                    key=f"priority_{todo['id']}",
-                )
+                edit_description = st.text_area("Description", value=todo.get("description") or "", key=f"description_{todo['id']}")
+                edit_due_date = st.text_input("Due date (YYYY-MM-DD)", value=todo.get("due_date") or "", key=f"due_{todo['id']}")
+                edit_priority = st.selectbox("Priority", ["low", "normal", "high"], index=["low", "normal", "high"].index(todo.get("priority", "normal")), key=f"priority_{todo['id']}")
+                
                 col1, col2 = st.columns(2)
                 if col1.form_submit_button("Save changes", use_container_width=True):
-                    save_todo_changes(todo["id"], edit_title, edit_description, edit_due_date, edit_priority)
-                    st.session_state[edit_key] = False
-                    rerun_app()
+                    if is_guest:
+                        for t in st.session_state.guest_todos:
+                            if t["id"] == todo["id"]:
+                                t["title"] = edit_title.strip()
+                                t["description"] = edit_description.strip() or None
+                                t["due_date"] = edit_due_date.strip() or None
+                                t["priority"] = edit_priority
+                        push_toast("Task updated.", "success")
+                        st.session_state[edit_key] = False
+                        rerun_app()
+                    else:
+                        save_todo_changes(todo["id"], edit_title, edit_description, edit_due_date, edit_priority)
+                        st.session_state[edit_key] = False
+                
                 if col2.form_submit_button("Cancel", use_container_width=True):
                     st.session_state[edit_key] = False
                     rerun_app()
-    
-    # Add spacing between todo cards
+                    
     st.divider()
 
 

@@ -37,7 +37,12 @@ def main():
     
     # Show warning for guest mode
     if st.session_state.auth.get("is_guest"):
-        st.warning("👤 You are in Guest Mode - your data will not be saved!", icon="⚠️")
+        st.markdown("""
+        <div style='background-color: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; border: 1px solid #ffeeba; margin-top: 15px;'>
+            ⚠️ <b>Note for Guest mode:</b> You can test the app, but your todos will be lost when you refresh or close the page!
+        </div>
+        """,
+        unsafe_allow_html=True)
     
     if st.session_state.auth.get("role") == "admin":
         admin_panel()
