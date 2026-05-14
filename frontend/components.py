@@ -43,6 +43,10 @@ def apply_theme():
                     linear-gradient(145deg, var(--bg-a), var(--bg-b));
             }
 
+            .stApp, label, [data-testid="stWidgetLabel"] p, .stRadio p {
+                color: var(--ink) !important;
+            }
+
             h1, h2, h3 {
                 color: var(--ink) !important;
                 letter-spacing: 0 !important;
@@ -57,7 +61,53 @@ def apply_theme():
                 border-left: 1px solid var(--line);
                 backdrop-filter: blur(8px);
             }
+            [data-testid="stFormSubmitButton"] > button {
+                background-color: var(--accent) !important; 
+                color: white !important; 
+                border: none !important;
+                transition: opacity 0.2s ease !important; 
+            }
 
+            [data-testid="stFormSubmitButton"] > button:hover {
+                background-color: var(--accent) !important; 
+                opacity: 0.85 !important; 
+            }
+
+            div[data-testid="InputInstructions"] {
+                display: none !important;
+            }
+            /* 1. Sửa tất cả các nút phụ (Logout, Delete, Reopen...) */
+            button[kind="secondary"] {
+                background-color: white !important; /* Đổi nền thành trắng */
+                color: var(--ink) !important; /* Chữ xanh đen */
+                border: 1px solid var(--line) !important;
+                transition: opacity 0.2s ease !important;
+            }
+
+            button[kind="secondary"]:hover {
+                opacity: 0.65 !important; /* Chỉ mờ đi một chút khi hover */
+            }
+
+            /* 2. Sửa các nút chính (Complete Task màu đỏ, Sign in...) */
+            button[kind="primary"], button[kind="primaryFormSubmit"] {
+                background-color: var(--accent) !important;
+                color: white !important;
+                border: none !important;
+                transition: opacity 0.2s ease !important;
+            }
+
+            button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover {
+                background-color: var(--accent) !important; /* Giữ nguyên màu đỏ */
+                opacity: 0.85 !important; /* Mờ đi một chút khi hover */
+            }
+
+            /* 3. Sửa luôn các ô nhập liệu (Title, Description) đang bị nền đen */
+            .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {
+                background-color: white !important;
+                color: var(--ink) !important;
+                -webkit-text-fill-color: var(--ink) !important; /* Ép màu chữ hiển thị rõ khi gõ */
+                border: 1px solid var(--line) !important;
+            }
             [data-testid="stVerticalBlockBorderWrapper"] {
                 border-radius: 8px;
                 border: 1px solid var(--line);
@@ -79,6 +129,8 @@ def apply_theme():
                 border-radius: 8px;
                 border: 1px solid rgba(16, 42, 67, 0.18);
                 font-weight: 700;
+                /* --- ĐÃ SỬA: Ép màu chữ cho nút bấm --- */
+                color: var(--ink) !important; 
                 transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
             }
 
@@ -101,7 +153,6 @@ def apply_theme():
         """,
         unsafe_allow_html=True,
     )
-
 
 def push_toast(message: str, level: str = "info"):
     st.session_state["ui_toast"] = {"message": message, "level": level}
@@ -246,7 +297,7 @@ def todo_form():
     title = st.sidebar.text_input("Title", key="todo_title")
     description = st.sidebar.text_area("Description", key="todo_description")
     due_date = st.sidebar.date_input("Due date", key="todo_due_date")
-    priority = st.sidebar.selectbox("Priority", ["normal", "high", "low"], key="todo_priority")
+    priority = st.sidebar.selectbox("Priority", ["low", "normal", "high"], key="todo_priority")
 
     if st.sidebar.button("Add Todo"):
         if not title.strip():
