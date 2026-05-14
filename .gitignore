@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+serviceAccountKey.json
+*service-account*.json
+*firebase-adminsdk*.json
+*.pyc
+__pycache__/
+.streamlit/secrets.toml
