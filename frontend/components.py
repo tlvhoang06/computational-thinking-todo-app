@@ -18,6 +18,103 @@ HTTP_ERROR_MESSAGES = {
 }
 
 
+def apply_theme():
+    st.markdown(
+        """
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
+
+            :root {
+                --bg-a: #f4efe6;
+                --bg-b: #d7e7dd;
+                --ink: #102a43;
+                --muted: #486581;
+                --surface: rgba(255, 255, 255, 0.78);
+                --line: rgba(16, 42, 67, 0.15);
+                --accent: #d64545;
+                --accent-2: #1f8a70;
+            }
+
+            .stApp {
+                font-family: "Manrope", sans-serif;
+                background:
+                    radial-gradient(circle at 15% 20%, rgba(214, 69, 69, 0.20), transparent 32%),
+                    radial-gradient(circle at 80% 0%, rgba(31, 138, 112, 0.22), transparent 32%),
+                    linear-gradient(145deg, var(--bg-a), var(--bg-b));
+            }
+
+            h1, h2, h3 {
+                color: var(--ink) !important;
+                letter-spacing: 0 !important;
+            }
+
+            .stCaption, .stMarkdown p {
+                color: var(--muted);
+            }
+
+            section[data-testid="stSidebar"] {
+                background: rgba(255, 255, 255, 0.65);
+                border-left: 1px solid var(--line);
+                backdrop-filter: blur(8px);
+            }
+
+            [data-testid="stVerticalBlockBorderWrapper"] {
+                border-radius: 8px;
+                border: 1px solid var(--line);
+                background: var(--surface);
+                box-shadow: 0 18px 40px rgba(16, 42, 67, 0.08);
+                padding: 0.35rem 0.75rem;
+                animation: fadeUp 360ms ease-out;
+            }
+
+            div[data-testid="stForm"] {
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                padding: 1.25rem;
+                background: rgba(255, 255, 255, 0.82);
+                box-shadow: 0 20px 42px rgba(16, 42, 67, 0.09);
+            }
+
+            .stButton > button, .stDownloadButton > button {
+                border-radius: 8px;
+                border: 1px solid rgba(16, 42, 67, 0.18);
+                font-weight: 700;
+                transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+            }
+
+            .stButton > button:hover, .stDownloadButton > button:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 8px 16px rgba(16, 42, 67, 0.16);
+                border-color: rgba(16, 42, 67, 0.28);
+            }
+
+            [data-testid="stToast"] {
+                border-radius: 8px;
+                border: 1px solid var(--line);
+            }
+
+            @keyframes fadeUp {
+                from { opacity: 0; transform: translateY(8px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def push_toast(message: str, level: str = "info"):
+    st.session_state["ui_toast"] = {"message": message, "level": level}
+
+
+def flush_toast():
+    payload = st.session_state.pop("ui_toast", None)
+    if not payload:
+        return
+    icon = {"success": "✅", "error": "❌", "warning": "⚠️"}.get(payload.get("level"), "ℹ️")
+    st.toast(payload.get("message", ""), icon=icon)
+
+
 def rerun_app():
     if hasattr(st, "rerun"):
         st.rerun()
@@ -63,7 +160,7 @@ def handle_google_redirect():
         st.experimental_set_query_params()
     if "idToken" in result:
         st.session_state.auth["id_token"] = result["idToken"]
-        st.success("Google sign-in successful")
+        push_toast("Google login successful.", "success")
         refresh_user_profile()
         rerun_app()
     else:
@@ -71,32 +168,12 @@ def handle_google_redirect():
 
 
 def login_ui():
-    st.markdown(
-        """
-        <style>
-            section[data-testid="stSidebar"] {display: none;}
-            .block-container {
-                min-height: 100vh;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                padding-top: 2rem;
-                padding-bottom: 2rem;
-            }
-            div[data-testid="stForm"] {
-                border: 1px solid rgba(49, 51, 63, 0.18);
-                border-radius: 8px;
-                padding: 1.5rem;
-                background: rgba(255, 255, 255, 0.03);
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("<style>section[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
 
     _, center, _ = st.columns([1, 1.2, 1])
     with center:
-        st.subheader("Welcome back")
+        st.subheader("Welcome to your workspace")
+        st.caption("Sign in to continue with your todo board.")
         auth_mode = st.radio("Choose action", ["Login", "Register"], horizontal=True)
 
         with st.form("auth_form"):
@@ -112,7 +189,10 @@ def login_ui():
             result = firebase_signup(email, password) if auth_mode == "Register" else firebase_signin(email, password)
             if "idToken" in result:
                 st.session_state.auth["id_token"] = result["idToken"]
-                st.success(f"Authenticated as {email}")
+                if auth_mode == "Register":
+                    push_toast("Register successful. Your account is ready.", "success")
+                else:
+                    push_toast(f"Login successful: {email}", "success")
                 refresh_user_profile()
                 rerun_app()
             else:
@@ -134,11 +214,18 @@ def login_ui():
                 )
             )
             st.link_button("Continue with Google", auth_url, use_container_width=True)
+        with st.expander("How to sign in as admin"):
+            st.write(
+                "1. Login with any account.\n"
+                "2. Use an existing admin account to open Admin Controls.\n"
+                "3. Promote your account role from user to admin.\n"
+                "4. Logout and login again to refresh admin privileges."
+            )
 
 
 def logout():
     reset_auth_state()
-    st.success("Logged out")
+    push_toast("Logged out successfully.", "info")
     rerun_app()
 
 
@@ -148,6 +235,8 @@ def sidebar_user_info():
     st.sidebar.write(f"**Email:** {st.session_state.auth.get('email')} ")
     st.sidebar.write(f"**Role:** {st.session_state.auth.get('role')} ")
     st.sidebar.write(f"**UID:** {st.session_state.auth.get('uid')} ")
+    if st.session_state.auth.get("role") == "admin":
+        st.sidebar.success("Admin mode enabled")
     if st.sidebar.button("Logout"):
         logout()
 
@@ -235,17 +324,21 @@ def render_todo_card(todo: dict):
             if st.button("Save changes", key=f"save_{todo['id']}"):
                 save_todo_changes(todo["id"], edit_title, edit_description, edit_due_date, edit_priority)
 
-        action_cols = st.columns([1, 1, 4])
-        if action_cols[0].button("Mark done" if not todo["done"] else "Mark open", key=f"toggle_{todo['id']}"):
+        action_cols = st.columns([1.4, 1, 3.6])
+        toggle_text = "Complete Task" if not todo["done"] else "Reopen Task"
+        toggle_type = "primary" if not todo["done"] else "secondary"
+        if action_cols[0].button(toggle_text, key=f"toggle_{todo['id']}", type=toggle_type, use_container_width=True):
             update = backend_put(f"/todos/{todo['id']}", {"done": not todo["done"]})
             if update.status_code == 200:
+                push_toast("Task status updated.", "success")
                 rerun_app()
             else:
                 show_response_error(update)
 
-        if action_cols[1].button("Delete", key=f"delete_{todo['id']}"):
+        if action_cols[1].button("Delete", key=f"delete_{todo['id']}", type="secondary", use_container_width=True):
             delete = backend_delete(f"/todos/{todo['id']}")
             if delete.status_code == 204:
+                push_toast("Task deleted.", "warning")
                 rerun_app()
             else:
                 show_response_error(delete)
@@ -264,7 +357,7 @@ def save_todo_changes(todo_id: str, title: str, description: str, due_date: str,
     }
     update = backend_put(f"/todos/{todo_id}", payload)
     if update.status_code == 200:
-        st.success("Todo updated")
+        push_toast("Task updated.", "success")
         rerun_app()
     else:
         show_response_error(update)

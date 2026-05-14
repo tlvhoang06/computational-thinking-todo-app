@@ -11,6 +11,8 @@ class Settings:
     firebase_project_id: str | None
     google_application_credentials: str | None
     cors_origins: list[str]
+    bootstrap_admin_email: str | None
+    bootstrap_admin_password: str | None
 
 
 def load_settings() -> Settings:
@@ -23,6 +25,8 @@ def load_settings() -> Settings:
         firebase_project_id=os.getenv("FIREBASE_PROJECT_ID"),
         google_application_credentials=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
         cors_origins=cors_origins,
+        bootstrap_admin_email=os.getenv("BOOTSTRAP_ADMIN_EMAIL"),
+        bootstrap_admin_password=os.getenv("BOOTSTRAP_ADMIN_PASSWORD"),
     )
 
 
