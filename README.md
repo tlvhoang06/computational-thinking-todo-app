@@ -58,12 +58,6 @@ streamlit run frontend/app.py
 
 Open `http://localhost:8501`.
 
-## Submission Notes
-
-- Submit `.env.example`, not `.env`.
-- Do not submit the Firebase service account JSON file.
-- The Firebase Web API key is not an admin private key, but it is still cleaner to keep it in environment variables.
-- A deployed app link is useful because the grader can test the app without receiving your private Firebase credentials.
 
 ## Implemented Features
 
@@ -73,4 +67,4 @@ Open `http://localhost:8501`.
 - Only show a normal user's own Todo items
 - Search by title/description
 - Filter by status and priority
-- Basic role-based access with `user` and `admin`
+- Basic role-based access with `user`, `guest` and `admin`
